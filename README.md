@@ -1,15 +1,14 @@
 [![Varbase](https://raw.githubusercontent.com/Vardot/varbase/11.0.x/images/varbase-logo.png)](https://www.drupal.org/project/varbase)
 
 # Varbase AI VDB: Milvus
-[![CI](https://github.com/Vardot/varbase_ai_vdb_milvus/actions/workflows/ci.yml/badge.svg?branch=1.0.x)](https://github.com/Vardot/varbase_ai_vdb_milvus/actions/workflows/ci.yml)
-[![Varbase AI VDB: Milvus](https://img.shields.io/badge/Varbase%20AI%20VDB%3A%20Milvus-1.0.2-0d6efc?labelColor=001d38&style=flat-square)](https://github.com/Vardot/varbase_ai_vdb_milvus/releases/tag/1.0.2)
+[![Varbase AI VDB: Milvus](https://img.shields.io/badge/Varbase%20AI%20VDB%3A%20Milvus-1.0.x--dev-0d6efc?labelColor=001d38&style=flat-square)](https://www.drupal.org/project/varbase_ai_vdb_milvus)
 
-A private Drupal recipe that connects a Varbase 11 site to a [Milvus](https://milvus.io) vector database for AI
+A Drupal recipe that connects a Varbase 11 site to a [Milvus](https://milvus.io) vector database for AI
 Search. Milvus can run **locally inside the same DDEV project**, or **remotely** on Zilliz Cloud or on a server of
 your own. The recipe is the same for all three. Only three values change.
 
-It is one of three interchangeable vector database recipes for [Varbase AI Search](https://github.com/Vardot/varbase_ai_search_base).
-The others are [MariaDB](https://github.com/Vardot/varbase_ai_vdb_mariadb) and [SQLite](https://github.com/Vardot/varbase_ai_vdb_sqlite).
+It is one of three interchangeable vector database recipes for [Varbase AI Search](https://www.drupal.org/project/varbase_ai_search_base).
+The other is [MariaDB](https://www.drupal.org/project/varbase_ai_vdb_mariadb).
 
 **Experimental.** The Milvus VDB provider (`drupal/ai_vdb_provider_milvus`) has no stable release, so this stack is
 not covered by the Drupal security advisory policy.
@@ -34,7 +33,7 @@ The recipe has three inputs:
 | `api_key` | empty | The id of the Key that holds the token. Empty means no token. |
 
 It does **not** create a Search API server or index. That needs an embeddings model and belongs to
-[Varbase AI Search](https://github.com/Vardot/varbase_ai_search_base).
+[Varbase AI Search](https://www.drupal.org/project/varbase_ai_search_base).
 
 ## Requirements
 
@@ -51,11 +50,9 @@ It does **not** create a Search API server or index. That needs an embeddings mo
 Locally, inside the same DDEV project:
 
 ```bash
-# 1. Fetch the recipe. The repository is private, so Composer clones it over SSH.
-ddev auth ssh
-ddev composer config repositories.varbase_ai_vdb_milvus vcs git@github.com:Vardot/varbase_ai_vdb_milvus.git
-ddev composer config --json extra.drupal-recipe-unpack.ignore '["vardot/varbase_ai_vdb_milvus"]'
-ddev composer require vardot/varbase_ai_vdb_milvus:~1.0.2 --prefer-source
+# 1. Fetch the recipe.
+ddev composer config --json extra.drupal-recipe-unpack.ignore '["drupal/varbase_ai_vdb_milvus"]'
+ddev composer require drupal/varbase_ai_vdb_milvus:1.0.x-dev
 
 # 2. Add Milvus to DDEV: one container, Milvus standalone with embedded etcd and local storage, no host port.
 cp recipes/varbase_ai_vdb_milvus/ddev/docker-compose.milvus.yaml .ddev/
@@ -69,11 +66,9 @@ ddev drush cr
 # 4. Make it the site's default vector database, which Varbase AI Search reads.
 ddev drush cset ai.settings default_vdb_provider milvus -y
 
-# 5. Check it against the live Milvus. No AI key is needed.
-ddev drush php:eval "$(sed -n "/<<'PHP'/,/^ *PHP\$/p" recipes/varbase_ai_vdb_milvus/.github/workflows/ci.yml | sed '1d;$d')"
 ```
 
-Use `1.0.x-dev` instead of `~1.0.2` to follow the development branch. The ignore line keeps the recipe a locked
+The ignore line keeps the recipe a locked
 package: without it core's recipe-unpack plugin moves its requirements into the project's `composer.json` and
 drops the recipe itself. Re-applying the recipe is safe.
 
@@ -130,11 +125,10 @@ check it.
 #   MILVUS_PORT     the REST port
 #   MILVUS_API_KEY  the token
 
-ddev composer require vardot/varbase_ai_vdb_milvus:~1.0.2 --prefer-source   # as above
+ddev composer require drupal/varbase_ai_vdb_milvus:1.0.x-dev   # as above
 ddev drush cr
 ddev drush recipe ../recipes/varbase_ai_vdb_milvus --input=varbase_ai_vdb_milvus.api_key=milvus_api_key
 ddev drush cr
-ddev drush php:eval "$(sed -n "/<<'PHP'/,/^ *PHP\$/p" recipes/varbase_ai_vdb_milvus/.github/workflows/ci.yml | sed '1d;$d')"
 ```
 
 Each input can also be passed directly, for example `--input=varbase_ai_vdb_milvus.server=https://...`.
@@ -193,24 +187,13 @@ works locally and there. **Not tested on Upsun.**
 
 ## Automated testing
 
-`.github/workflows/ci.yml` runs on every pull request, every push to `1.0.x` and every tag:
+GitLab CI on [git.drupalcode.org](https://git.drupalcode.org/project/varbase_ai_vdb_milvus) (`.gitlab-ci.yml`) runs on every merge
+request and every push to `1.0.x`, like the other Varbase AI recipes: `composer validate` and a lint of every YAML
+file.
 
-1. **Lint**: `composer validate`, every YAML file, and PHP syntax.
-2. **Apply on Drupal 11.4 with Milvus 2.6**: Milvus 2.6.21 starts from `tests/ci/docker-compose.milvus.yml`, the
-   same single container as `ddev/`, with its ports published on the runner. A fresh `drupal/recommended-project`
-   site requires this checkout, applies the recipe with the `server` and `port` inputs read from `MILVUS_SERVER`
-   and `MILVUS_PORT` in the environment, applies it again, and runs the no-key recipe check.
-3. **Functional tests**: the same job then serves the site and runs the Playwright + Cucumber scenarios in
-   `tests/features` through [`@vardot/varbase-e2e`](https://www.npmjs.com/package/@vardot/varbase-e2e) in
-   Chromium. The Webmaster provisions the testing users first, then the scenarios check the admin pages the
-   recipe adds, every page for PHP errors, and that a visitor without the permission is kept out. Screenshots
-   and reports of a failed run are kept as the `functional-tests` artifact. To run them against a site of
-   your own: `yarn install`, then `LAUNCH_URL=https://your-site.ddev.site yarn test`.
-
-The CI step "Check the recipe without an AI key" (an inline `drush php:eval` in `.github/workflows/ci.yml`) needs no AI key. It pings the provider, creates a collection, inserts three vectors, checks that
-a search ranks them in the right order, and drops the collection. It creates and drops a throw-away collection
-called `vdb_verify_milvus` in the database it connects to. The Search API server and index that the search needs
-are built in memory, so the test runs on any Drupal site and saves nothing to it.
+The functional tests in `tests/features` (Playwright and Cucumber through
+[`@vardot/varbase-e2e`](https://www.npmjs.com/package/@vardot/varbase-e2e)) run against a site of your own:
+`yarn install`, then `LAUNCH_URL=https://your-site.ddev.site yarn test`.
 
 ## Checked
 
@@ -228,7 +211,7 @@ Milvus 2.6.21 in DDEV, then the three-container setup:
 **Not checked:** a real Zilliz Cloud cluster, a Milvus on another host or behind TLS, anything on an Upsun
 environment, and indexing real content, which needs an embeddings provider key. The tests above ran with the
 `ai_search` bundled in `drupal/ai`, not the standalone `ai_search` 1.3 that Varbase AI Search brings. The
-[Varbase AI Chatbot Base](https://github.com/Vardot/varbase_ai_chatbot_base) README records one site where this
+[Varbase AI Chatbot Base](https://www.drupal.org/project/varbase_ai_chatbot_base) README records one site where this
 recipe and Varbase AI Search ran together, on 8 October 2026.
 
 ## Known issues in the provider
@@ -248,11 +231,10 @@ recipe and Varbase AI Search ran together, on 8 October 2026.
 
 | Recipe | What it does |
 |---|---|
-| [Varbase AI Search](https://github.com/Vardot/varbase_ai_search_base) | The vector index of the site's content, on the default vector database. |
-| [Varbase AI Answers](https://github.com/Vardot/varbase_ai_answers_base) | Ask AI: cited answers over that index. |
-| [Varbase AI Chatbot Base](https://github.com/Vardot/varbase_ai_chatbot_base) | A visitor chatbot over that index. |
-| [Varbase AI VDB: MariaDB](https://github.com/Vardot/varbase_ai_vdb_mariadb) | MariaDB's native `VECTOR` type as the vector database. |
-| [Varbase AI VDB: SQLite](https://github.com/Vardot/varbase_ai_vdb_sqlite) | SQLite with sqlite-vec as the vector database. |
+| [Varbase AI Search](https://www.drupal.org/project/varbase_ai_search_base) | The vector index of the site's content, on the default vector database. |
+| [Varbase AI Answers](https://www.drupal.org/project/varbase_ai_answers_base) | Ask AI: cited answers over that index. |
+| [Varbase AI Chatbot Base](https://www.drupal.org/project/varbase_ai_chatbot_base) | A visitor chatbot over that index. |
+| [Varbase AI VDB: MariaDB](https://www.drupal.org/project/varbase_ai_vdb_mariadb) | MariaDB's native `VECTOR` type as the vector database. |
 
 ## License
 

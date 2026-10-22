@@ -15,7 +15,7 @@
         "Zilliz Cloud"
     ],
     "license": "GPL-2.0-or-later",
-    "homepage": "https://github.com/Vardot/varbase_ai_vdb_milvus",
+    "homepage": "https://www.drupal.org/project/varbase_ai_vdb_milvus",
     "authors": [
         {
             "name": "Vardot",
@@ -24,8 +24,8 @@
         }
     ],
     "support": {
-        "issues": "https://github.com/Vardot/varbase_ai_vdb_milvus/issues",
-        "source": "https://github.com/Vardot/varbase_ai_vdb_milvus"
+        "issues": "https://www.drupal.org/project/issues/varbase_ai_vdb_milvus",
+        "source": "https://git.drupalcode.org/project/varbase_ai_vdb_milvus"
     },
     "minimum-stability": "dev",
     "prefer-stable": true,

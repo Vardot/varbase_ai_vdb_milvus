@@ -1,0 +1,41 @@
+## Milvus standalone for DDEV, for the varbase_ai_vdb_milvus recipe.
+##
+## Copy this file to .ddev/docker-compose.milvus.yaml in the project and run `ddev restart`.
+## The Drupal web container reaches Milvus as http://milvus on port 19530 (REST).
+##
+## No host port is published, so a second project on the same machine cannot collide on 19530.
+## Authorization is off: this is for local development on the project's private DDEV network only.
+## Never expose this container.
+##
+## One container: Milvus 2.6 standalone with embedded etcd and local storage, the same setup as
+## Milvus's own standalone_embed.sh. It needs no MinIO and no separate etcd. The earlier three-container
+## version used the minio/minio image, which can no longer be pulled from Docker Hub or quay.io.
+
+volumes:
+  milvus_data:
+
+services:
+  milvus:
+    container_name: ddev-${DDEV_SITENAME}-milvus
+    image: "milvusdb/milvus:v2.6.21"
+    restart: "no"
+    labels:
+      com.ddev.site-name: ${DDEV_SITENAME}
+      com.ddev.approot: ${DDEV_APPROOT}
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      COMMON_STORAGETYPE: local
+      DEPLOY_MODE: STANDALONE
+      COMMON_SECURITY_AUTHORIZATIONENABLED: "false"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3

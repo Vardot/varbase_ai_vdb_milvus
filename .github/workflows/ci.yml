@@ -1,0 +1,298 @@
+# Continuous integration for the Varbase AI VDB: Milvus recipe.
+#
+# The repository is private, so this runs on GitHub Actions rather than the
+# drupal.org GitLab templates the public Varbase recipes use. Two jobs:
+#
+#   lint    composer.json, every YAML file and the PHP test script.
+#   recipe  Milvus 2.6 from tests/ci (one container, embedded etcd and local
+#           storage), and a real Drupal 11.4 site that requires this checkout,
+#           applies the recipe pointed at that Milvus, applies it again (it
+#           must be safe to re-apply), then runs tests/verify.php, which needs
+#           no AI key.
+#           Then it serves the site and runs the functional suite in
+#           tests/features (Playwright + Cucumber through @vardot/varbase-e2e)
+#           in Chromium.
+
+name: CI
+
+on:
+  push:
+    branches: ['1.0.x']
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PHP_VERSION: '8.4'
+  DRUPAL_CORE: '~11.4.0'
+  RECIPE: varbase_ai_vdb_milvus
+  PACKAGE: vardot/varbase_ai_vdb_milvus
+  COMPOSER_NO_INTERACTION: '1'
+  # Read by the recipe's server and port inputs.
+  MILVUS_SERVER: http://127.0.0.1
+  MILVUS_PORT: '19530'
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          tools: composer:v2
+          coverage: none
+
+      - name: Validate composer.json
+        run: composer validate --no-check-all --no-check-publish
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Lint YAML
+        run: |
+          pip install --quiet pyyaml
+          python3 - <<'PY'
+          import glob, sys, yaml
+          files = sorted(set(glob.glob('**/*.yml', recursive=True) + glob.glob('**/*.yaml', recursive=True) + glob.glob('.github/**/*.yml', recursive=True)))
+          bad = 0
+          for f in files:
+              try:
+                  list(yaml.safe_load_all(open(f, encoding='utf-8')))
+              except Exception as e:
+                  print(f'::error file={f}::{e}')
+                  bad += 1
+          print(f'{len(files)} YAML files checked, {bad} with errors')
+          sys.exit(1 if bad else 0)
+          PY
+
+      - name: No PHP in the recipe
+        run: |
+          # A recipe ships config only: no .php, .module, .install or .inc file.
+          found=$(find . -path ./.git -prune -o -path ./vendor -prune -o -path ./node_modules -prune -o -type f \( -name '*.php' -o -name '*.module' -o -name '*.install' -o -name '*.inc' \) -print)
+          if [ -n "$found" ]; then echo "::error::PHP files found: $found"; exit 1; fi
+          echo 'No PHP files.'
+
+  recipe:
+    name: Apply on Drupal 11.4 with Milvus 2.6
+    needs: lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: recipe
+
+      - name: Start Milvus
+        run: docker compose -f recipe/tests/ci/docker-compose.milvus.yml up -d --wait --wait-timeout 300
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: gd, pdo_sqlite, sqlite3, mbstring, intl, zip, bcmath, opcache
+          ini-values: memory_limit=-1
+          tools: composer:v2
+          coverage: none
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer
+          key: composer-${{ runner.os }}-${{ env.PHP_VERSION }}-${{ hashFiles('recipe/composer.json') }}
+          restore-keys: composer-${{ runner.os }}-${{ env.PHP_VERSION }}-
+
+      - name: Build a Drupal site that requires this checkout
+        run: |
+          composer create-project "drupal/recommended-project:${DRUPAL_CORE}" site --no-install
+          cd site
+          composer config minimum-stability dev
+          composer config prefer-stable true
+          composer config repositories.recipe "{\"type\": \"path\", \"url\": \"../recipe\", \"options\": {\"symlink\": false, \"versions\": {\"${PACKAGE}\": \"1.0.x-dev\"}}}"
+          composer config --json extra.drupal-recipe-unpack.ignore "[\"${PACKAGE}\"]"
+          composer require drush/drush:^13 "${PACKAGE}:1.0.x-dev"
+          composer show --no-ansi | grep -E 'drupal/(core|ai|ai_vdb_provider_milvus|search_api) '
+
+      - name: Install Drupal
+        working-directory: site
+        run: |
+          vendor/bin/drush site:install standard --db-url=sqlite://sites/default/files/.ht.sqlite \
+            --account-pass=admin --site-name="Recipe CI" -y
+
+      - name: Apply the recipe
+        working-directory: site
+        run: |
+          vendor/bin/drush cr
+          vendor/bin/drush recipe "$PWD/recipes/${RECIPE}"
+          vendor/bin/drush cr
+          vendor/bin/drush config:get ai_vdb_provider_milvus.settings
+
+      - name: Apply the recipe again
+        working-directory: site
+        run: vendor/bin/drush recipe "$PWD/recipes/${RECIPE}"
+
+      - name: Check the recipe without an AI key
+        working-directory: site
+        run: |
+          # The checks run inline: the recipe ships no PHP file. Each prints PASS or FAIL,
+          # then RESULT, and a failure throws so that drush exits non-zero.
+          vendor/bin/drush php:eval "$(cat <<'PHP'
+          // Optional arguments of the old tests/verify.php; CI passes only these.
+          $extra = ['milvus'];
+          $provider_id = $extra[0] ?? 'milvus';
+          $database = $extra[1] ?? 'default';
+          $collection = 'vdb_verify_' . preg_replace('/[^a-z0-9_]/', '_', $provider_id);
+          $failed = FALSE;
+          $lists = FALSE;
+
+          $check = function (string $label, bool $ok, string $detail = '') use (&$failed): void {
+            if (!$ok) {
+              $failed = TRUE;
+            }
+            echo sprintf("%-4s %s%s\n", $ok ? 'PASS' : 'FAIL', $label, $detail !== '' ? " ($detail)" : '');
+          };
+
+          // getCollections() is documented as a list of names, but Milvus returns its raw
+          // REST answer, {code: 0, data: [names]}. Accept both.
+          $exists = function () use (&$provider, $collection, $database): bool {
+            $list = $provider->getCollections($database);
+            $names = is_array($list) && isset($list['data']) && is_array($list['data']) ? $list['data'] : (array) $list;
+            return in_array($collection, $names, TRUE) || array_key_exists($collection, $names);
+          };
+
+          try {
+            $provider = \Drupal::service('ai.vdb_provider')->createInstance($provider_id);
+            $check('provider plugin loads', TRUE, get_class($provider));
+            $check('ping', $provider->ping() === TRUE);
+            $check('isSetup', $provider->isSetup() === TRUE);
+
+            // Start clean in case an earlier run was interrupted.
+            try {
+              $provider->dropCollection($collection, $database);
+            }
+            catch (\Throwable $e) {
+              // Nothing to drop.
+            }
+
+            $provider->createCollection($collection, 4, \Drupal\ai\Enum\VdbSimilarityMetrics::CosineSimilarity, $database);
+            // Not every provider lists its collections (SQLite always answers with an
+            // empty list), so the check is that creating did not throw.
+            $lists = $exists();
+            $check('createCollection', TRUE, $lists ? 'listed by getCollections()' : 'getCollections() does not list it');
+
+            // A and C point almost the same way, B is at right angles to both.
+            $rows = [
+              'A' => [1.0, 0.0, 0.0, 0.0],
+              'B' => [0.0, 1.0, 0.0, 0.0],
+              'C' => [0.9, 0.1, 0.0, 0.0],
+            ];
+            $i = 0;
+            foreach ($rows as $name => $vector) {
+              $i++;
+              $provider->insertIntoCollection($collection, [
+                'drupal_long_id' => "verify:$i:0",
+                'drupal_entity_id' => "entity:node/$i:en",
+                'vector' => $vector,
+                'server_id' => 'verify',
+                'index_id' => 'verify',
+                'content' => $name,
+              ], $database);
+            }
+            $check('insertIntoCollection', TRUE, '3 rows');
+
+            // Some engines make new rows searchable a moment later.
+            sleep(2);
+
+            // Some providers read their metric from the Search API server behind the
+            // query. Supply it on in-memory copies, so that nothing is saved to the site.
+            // Built here rather than copied from the site's own server and index, so the
+            // test runs on any Drupal site, not only one that already has them.
+            $server = \Drupal\search_api\Entity\Server::create([
+              'id' => 'vdb_verify',
+              'name' => 'VDB verify',
+              'backend' => 'search_api_ai_search',
+              'backend_config' => ['database_settings' => ['metric' => \Drupal\ai\Enum\VdbSimilarityMetrics::CosineSimilarity->value]],
+            ]);
+            $index = \Drupal\search_api\Entity\Index::create(['id' => 'vdb_verify', 'name' => 'VDB verify']);
+            $index->setServer($server);
+            $query = $index->query();
+            $results = $provider->vectorSearch($collection, [1.0, 0.0, 0.0, 0.0], ['content', 'drupal_entity_id'], $query, '', 3, 0, $database);
+            $order = array_map(fn($row) => $row['content'] ?? '?', array_values($results));
+            $check('vectorSearch ranks A, C, B', $order === ['A', 'C', 'B'], 'got ' . implode(', ', $order));
+          }
+          catch (\Throwable $e) {
+            $check('no exception', FALSE, get_class($e) . ': ' . $e->getMessage());
+          }
+          finally {
+            try {
+              if (isset($provider)) {
+                $provider->dropCollection($collection, $database);
+                $check('dropCollection', empty($lists) || !$exists());
+              }
+            }
+            catch (\Throwable $e) {
+              $check('cleanup', FALSE, get_class($e) . ': ' . $e->getMessage());
+            }
+          }
+
+          echo $failed ? "RESULT: FAIL\n" : "RESULT: PASS\n";
+          // Drush reports an exit() inside a script as an abnormal termination even on
+          // success, so end normally on PASS and throw on FAIL to get a non-zero status.
+          if ($failed) {
+            throw new \RuntimeException('One or more checks failed.');
+          }
+          PHP
+          )"
+
+      - name: Milvus logs
+        if: failure()
+        run: docker compose -f recipe/tests/ci/docker-compose.milvus.yml logs --tail 80
+
+      - name: Serve the site for the functional tests
+        working-directory: site
+        run: |
+          # The Webmaster in cucumber.shared.js is uid 1.
+          vendor/bin/drush php:eval '$u = \Drupal\user\Entity\User::load(1); $u->setUsername("webmaster"); $u->setEmail("webmaster@example.test"); $u->setPassword("dD.123123ddd"); $u->save();'
+          vendor/bin/drush cr
+          # Drupal expects the docroot as the working directory: from anywhere else
+          # plugin discovery finds nothing and every page is a 500.
+          (cd web && PHP_CLI_SERVER_WORKERS=8 nohup php -S 127.0.0.1:8080 .ht.router.php > /tmp/php-server.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:8080/user/login && break; sleep 2; done
+          curl -s -o /dev/null -w 'user/login: HTTP %{http_code}\n' http://127.0.0.1:8080/user/login
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run the functional tests (Playwright + Cucumber)
+        working-directory: recipe
+        env:
+          LAUNCH_URL: http://127.0.0.1:8080
+        run: |
+          echo "nodeLinker: node-modules" > .yarnrc.yml
+          corepack enable
+          # varbase-e2e's postinstall can rewrite cucumber.js; keep ours.
+          cp cucumber.js /tmp/cucumber.js.bak
+          yarn install
+          cp /tmp/cucumber.js.bak cucumber.js
+          ./node_modules/.bin/playwright install --with-deps chromium
+          yarn test
+
+      - name: Keep the test reports and screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: functional-tests
+          path: |
+            recipe/tests/reports/
+            recipe/tests/screenshots/
+            /tmp/php-server.log
+          if-no-files-found: ignore

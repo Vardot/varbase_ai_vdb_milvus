@@ -1,0 +1,58 @@
+name: 'Varbase AI VDB: Milvus'
+type: Varbase AI
+description: 'Connects the site to a Milvus or Zilliz Cloud vector database for AI Search. Installs the Milvus VDB provider and points it at http://milvus:19530, the DDEV service in ddev/, with no token. For a remote server, set MILVUS_SERVER and MILVUS_PORT (or pass the inputs) and pass the api_key input to use the Key it creates, which reads MILVUS_API_KEY. Experimental: the provider has no stable release. No custom PHP or shell code.'
+
+install:
+  - key
+  - ai
+  - ai_search
+  - ai_vdb_provider_milvus
+
+input:
+  server:
+    data_type: string
+    description: 'The Milvus or Zilliz Cloud address, with the scheme and without the port. The default is the DDEV service from ddev/docker-compose.milvus.yaml.'
+    default:
+      source: env
+      env: MILVUS_SERVER
+      fallback: 'http://milvus'
+  port:
+    data_type: integer
+    description: 'The Milvus REST port. Local Milvus uses 19530. Zilliz Cloud uses 443.'
+    default:
+      source: env
+      env: MILVUS_PORT
+      fallback: 19530
+  api_key:
+    data_type: string
+    description: 'The id of the Key that holds the token. Leave empty for a Milvus without authorization, which is the DDEV default. Use milvus_api_key, the Key this recipe creates, for a remote server.'
+    default:
+      source: value
+      value: ''
+
+config:
+  # Re-applying this recipe must be safe: install what is not there yet and leave the rest.
+  strict: false
+  actions:
+    # Created either way so that going remote is one input. The token is never stored in
+    # configuration: the Key reads it from the MILVUS_API_KEY environment variable. For a Milvus
+    # with authorization the value is "username:password". For Zilliz Cloud it is the API token.
+    # Do not point the provider at this Key while the variable is unset: the provider then gets
+    # NULL instead of a string and fails with a TypeError.
+    key.key.milvus_api_key:
+      createIfNotExists:
+        label: 'Milvus API key'
+        description: 'Read from the MILVUS_API_KEY environment variable.'
+        key_type: authentication
+        key_type_settings: {  }
+        key_provider: env
+        key_provider_settings:
+          env_variable: MILVUS_API_KEY
+          strip_line_breaks: true
+        key_input: none
+        key_input_settings: {  }
+    ai_vdb_provider_milvus.settings:
+      simpleConfigUpdate:
+        server: ${server}
+        port: ${port}
+        api_key: ${api_key}

@@ -1,0 +1,28 @@
+# Milvus for CI: the same single container as ddev/docker-compose.milvus.yaml
+# (Milvus 2.6 standalone with embedded etcd and local storage), without the
+# DDEV labels, and with the ports published on the runner so the Drupal site
+# there reaches it at http://127.0.0.1:19530. Test code: the recipe never uses
+# this file.
+name: milvus-ci
+
+services:
+  milvus:
+    image: "milvusdb/milvus:v2.6.21"
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      COMMON_STORAGETYPE: local
+      DEPLOY_MODE: STANDALONE
+      COMMON_SECURITY_AUTHORIZATIONENABLED: "false"
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 5s
+      start_period: 60s
+      timeout: 10s
+      retries: 40

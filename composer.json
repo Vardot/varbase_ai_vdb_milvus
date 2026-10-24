@@ -2,6 +2,7 @@
     "name": "drupal/varbase_ai_vdb_milvus",
     "description": "Connects a Varbase site to a Milvus or Zilliz Cloud vector database for AI Search, inside the same DDEV project or on a remote server. Experimental: the Milvus VDB provider has no stable release. No custom PHP or shell code.",
     "type": "drupal-recipe",
+    "version": "1.0.0-alpha1",
     "keywords": [
         "recipe",
         "Varbase recipes",

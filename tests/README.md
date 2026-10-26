@@ -7,7 +7,7 @@ Varbase 11 site with this recipe applied.
 | --- | --- |
 | `01-01-ai-vdb-milvus-provider.feature` | The webmaster saves the Milvus connection without an error; the Milvus API key is kept with the site's keys |
 | `01-02-ai-vdb-milvus-access.feature` | Only the webmaster sees the Milvus settings |
-| `01-03-ai-vdb-milvus-accessibility.feature` | The Milvus provider page keeps the label, link name and ARIA rules |
+| `01-03-ai-vdb-milvus-accessibility.feature` | The Milvus provider page gives every field a label and every link a name |
 
 ## Run it
 

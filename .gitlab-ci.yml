@@ -139,6 +139,10 @@ validate:yaml-lint:
     - $DRUSH user:create authenticated_user --mail=authenticated_user@example.test --password=$LOGIN_PASS
     - if [ -n "$NO_PROVIDER_MESSAGE" ]; then ! $DRUSH recipe $_BUILD_DIR/recipes/$RECIPE -y > /tmp/no-provider.log 2>&1 && grep -q "$NO_PROVIDER_MESSAGE" /tmp/no-provider.log && echo "Stopped without a provider, as expected."; fi
     - for r in $PROVIDER_RECIPE $BEFORE_RECIPES; do case $r in en:*) $DRUSH pm:enable "${r#en:}" -y;; tests/*) $DRUSH recipe "$CI_PROJECT_DIR/$r" -y;; *) $DRUSH recipe "$_BUILD_DIR/recipes/$r" -y;; esac; $DRUSH cache:rebuild; done
+    # The amazee.ai trial signup can fail for a moment on amazee.ai's side; try it again before giving up.
+    - EMBEDDINGS='echo \Drupal::config("ai.settings")->get("default_providers.embeddings.provider_id");'
+    - for i in 1 2 3; do [ -n "$($DRUSH php:eval "$EMBEDDINGS")" ] && break; sleep 30; $DRUSH recipe $_BUILD_DIR/recipes/drupal_cms_ai -y; $DRUSH cache:rebuild; done
+    - echo "Default embeddings provider - $($DRUSH php:eval "$EMBEDDINGS")"
     # Applied twice: the second run must change nothing and not fail.
     - $DRUSH recipe $_BUILD_DIR/recipes/$RECIPE -y
     - $DRUSH cache:rebuild

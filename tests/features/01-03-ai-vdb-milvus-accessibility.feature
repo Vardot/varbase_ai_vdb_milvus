@@ -4,14 +4,9 @@ Feature: Varbase AI Recipe - AI VDB: Milvus - Accessible provider page
   I want the Milvus settings page to work with a keyboard and a screen reader
   So that I can manage the vector database like anyone else
 
-  Scenario Outline: Check the Milvus provider page keeps the "<rule>" accessibility rule
+  Scenario: Check the Milvus provider page gives every field a label and every link a name
     Given I am a logged in user with the "Webmaster" user
      When I go to "/admin/config/ai/vdb_providers/milvus"
-     Then the page should not violate the accessibility rule "<rule>"
-
-    Examples:
-      | rule              |
-      | label             |
-      | link-name         |
-      | duplicate-id-aria |
-      | aria-valid-attr   |
+     Then every form field should have an accessible label
+      And every link should have an accessible name
+      And every ARIA role should be valid

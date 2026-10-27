@@ -92,6 +92,8 @@ validate:yaml-lint:
     NO_PROVIDER_MESSAGE: ""
     # Recipes applied before this one, in apply order; en:<module> enables a module.
     BEFORE_RECIPES: ""
+    # The Varbase Starter dev line carries the search view fix for Drupal CMS Search 2.2.7.
+    EXTRA_PACKAGES: "drupal/varbase_starter:1.0.x-dev"
   artifacts:
     when: on_failure
     paths:

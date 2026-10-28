@@ -1,7 +1,7 @@
 [![Varbase](https://raw.githubusercontent.com/Vardot/varbase/11.0.x/images/varbase-logo.png)](https://www.drupal.org/project/varbase)
 
 # Varbase AI VDB: Milvus
-[![Varbase AI VDB: Milvus](https://img.shields.io/badge/Varbase%20AI%20VDB%3A%20Milvus-1.0.0--beta1-0d6efc?labelColor=001d38&style=flat-square)](https://www.drupal.org/project/varbase_ai_vdb_milvus)
+[![Varbase AI VDB: Milvus](https://img.shields.io/badge/Varbase%20AI%20VDB%3A%20Milvus-1.0.0--beta2-0d6efc?labelColor=001d38&style=flat-square)](https://www.drupal.org/project/varbase_ai_vdb_milvus)
 
 A Drupal recipe that connects a Varbase 11 site to a [Milvus](https://milvus.io) vector database for AI
 Search. Milvus can run **locally inside the same DDEV project**, or **remotely** on Zilliz Cloud or on a server of

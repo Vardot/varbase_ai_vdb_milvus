@@ -57,7 +57,7 @@ validate:yaml-lint:
 .varbase-e2e:
   stage: test
   needs: []
-  image: registry.gitlab.com/drupal-infrastructure/drupalci/drupalci-environments/php-8.4-ubuntu-apache:production
+  image: registry.gitlab.com/drupal-infrastructure/drupalci/drupalci-environments/php-8.5-ubuntu-apache:production
   services:
     - name: registry.gitlab.com/drupal-infrastructure/drupalci/drupalci-environments/mysql-8:production
       alias: database

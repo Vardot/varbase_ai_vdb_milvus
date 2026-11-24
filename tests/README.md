@@ -24,3 +24,9 @@ The site needs the webmaster (`webmaster`) and one user per role, named after th
 
 CI applies Drupal CMS AI before the recipe. It sets up an amazee.ai trial as the default provider, so no key
 is needed. CI runs Milvus 2.6 standalone as a CI service.
+
+When amazee.ai cannot be reached, `tests/scripts/ai-provider.sh` sets the AI module's Echo test provider
+instead, prints "amazee.ai unavailable: running with the Echo test provider" and exports `AI_PROVIDER=echoai`.
+The suite checks the Milvus connection settings and their access, not stored vectors, so every scenario still
+runs. A scenario that needs a real model's reply is tagged `@live-ai` and skipped in that mode.
+`AMAZEE_UNREACHABLE=1` forces it.

@@ -33,7 +33,7 @@
     "require": {
         "drupal/ai": "^1.4",
         "drupal/ai_vdb_provider_milvus": "^1.1@beta",
-        "drupal/core": "^11.4",
+        "drupal/core": "^11.4 || ^12.0",
         "drupal/key": "^1.18",
         "drupal/search_api": "^1.40"
     }
